@@ -3,234 +3,140 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>XP-Q90EC 藍牙列印 (GB18030支援)</title>
-  <!-- Tailwind CSS CDN -->
+  <title>XP-Q90EC 藍牙列印 (CP936 修復版)</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- GBK / GB18030 編碼庫支援，解決熱敏印表機中文字亂碼 -->
-  <script src="https://cdn.jsdelivr.net/npm/fast-gbk@latest/index.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- CRITICAL: Using cptable for Code Page 936 (GBK) encoding to fix thermal printer mojibake -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/cpexcel.js"></script>
+
   <style>
     body {
       font-family: 'Noto Sans TC', sans-serif;
       -webkit-tap-highlight-color: transparent;
+      background-color: #0f172a; /* Slate 900 */
+      color: #f1f5f9; /* Slate 100 */
     }
     .font-mono {
       font-family: 'JetBrains Mono', monospace;
     }
+    /* Custom scrollbar for logs */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen pb-12 selection:bg-indigo-500 selection:text-white">
-  <div class="max-w-md mx-auto p-4 flex flex-col gap-4">
+<body class="min-h-screen pb-12 selection:bg-indigo-500 selection:text-white">
+  
+  <div class="max-w-md mx-auto p-4 flex flex-col gap-5">
     
-    <!-- Header -->
-    <header class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-2xl p-4 shadow-xl">
-      <div class="flex items-center justify-between mb-1">
-        <div class="flex items-center space-x-2">
-          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- Header Card -->
+    <header class="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-2xl p-4 shadow-xl">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
             </svg>
           </div>
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white">XP-Q90EC 測試器</h1>
-            <p class="text-xs text-emerald-400 font-mono">已配置：GB18030 漢字編碼模式</p>
+            <p class="text-[11px] text-emerald-400 font-mono">編碼引擎: CP936 (GB18030)</p>
           </div>
         </div>
-        <span id="connBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-          <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-          未連線
-        </span>
+        <div id="connStatus" class="flex flex-col items-end">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+            未連線
+          </span>
+        </div>
       </div>
-      <p id="deviceInfo" class="text-xs text-slate-400 mt-2 font-mono truncate">自檢單字庫：GB18030 簡體中文</p>
     </header>
 
-    <!-- Bluetooth Connection Control Card -->
-    <section class="bg-slate-800 border border-slate-700/60 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-slate-200">藍牙連線控制</h2>
-        <span class="text-xs text-indigo-400 font-mono" id="btSupportNotice">檢測中...</span>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <button id="btnConnect" onclick="connectPrinter()" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] transition-all rounded-xl font-medium text-sm text-white shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+    <!-- Connection Controls -->
+    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
+      <h2 class="text-sm font-semibold text-slate-300">藍牙裝置控制</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <button id="btnConnect" onclick="connectPrinter()" class="w-full py-3 px-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all rounded-xl font-medium text-sm text-white shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           搜尋並連線
         </button>
-
-        <button id="btnDisconnect" onclick="disconnectPrinter()" disabled class="w-full py-3 px-4 bg-slate-700/60 hover:bg-slate-700 text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-1">
+        <button id="btnDisconnect" onclick="disconnectPrinter()" disabled class="w-full py-3 px-2 bg-slate-700/80 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all rounded-xl font-medium text-sm text-slate-300 flex items-center justify-center gap-1">
           中斷連線
         </button>
       </div>
-
-      <!-- Encoding options -->
-      <div class="pt-2 border-t border-slate-700/60 flex items-center justify-between text-xs">
-        <label class="text-slate-400 flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" id="chkAutoSimplify" checked class="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900 w-4 h-4">
-          <span>轉為常用簡體字 (印表機內置字庫適應)</span>
-        </label>
-      </div>
+      <p id="btSupportNotice" class="text-[11px] text-slate-400 text-center font-mono mt-1">環境檢查中...</p>
     </section>
 
-    <!-- Real-time Clock & Print Now Card -->
-    <section class="bg-gradient-to-br from-slate-800 to-indigo-950/40 border border-indigo-500/30 rounded-2xl p-4 shadow-lg flex flex-col items-center text-center">
-      <span class="text-xs uppercase tracking-wider text-indigo-300 font-semibold mb-1">即時時鐘 (現在的時間)</span>
-      <div id="liveClock" class="font-mono text-2xl font-bold tracking-tight text-white py-1">
-        --:--:--
+    <!-- Test Print Action -->
+    <section class="bg-gradient-to-br from-slate-800 to-indigo-900/30 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col items-center">
+      <div class="mb-4 text-center">
+        <p class="text-xs text-indigo-300 font-semibold tracking-wider mb-1">準備列印</p>
+        <h3 class="text-xl font-bold text-white">咩味時刻工作室</h3>
+        <p class="text-sm text-slate-400">(五寮尖山羊乳)</p>
       </div>
-      <div id="liveDate" class="text-xs text-slate-400 font-mono mb-4">
-        ----/--/--
-      </div>
-
-      <button id="btnPrintTime" onclick="printCurrentTime()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl font-semibold text-base shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all">
+      
+      <button onclick="printTestReceipt()" class="w-full py-4 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-base shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
         </svg>
-        列印「現在的時間」 (GB18030)
+        列印防亂碼測試單
       </button>
-      <p class="text-[11px] text-slate-400 mt-2">已啟用 FS & 漢字指令 + GB18030 碼表，避免亂碼</p>
-    </section>
-
-    <!-- Custom Print Section -->
-    <section class="bg-slate-800 border border-slate-700/60 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
-      <h2 class="text-sm font-semibold text-slate-200">自訂中文測試</h2>
       
-      <div class="flex flex-col gap-2">
-        <textarea id="customTextInput" rows="2" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" placeholder="輸入要測試的文字 (例如：歡迎光臨 / 測試成功)...">歡迎光臨！
-芯燁 XP-Q90EC 測試成功！</textarea>
-        
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="printCustomText()" class="py-2.5 px-3 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5">
-            <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
-            </svg>
-            列印文字 (GB18030)
-          </button>
-          <button onclick="feedAndCutPaper()" class="py-2.5 px-3 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5">
-            <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"/>
-            </svg>
-            走紙切刀
-          </button>
-        </div>
-      </div>
+      <p class="text-[10px] text-slate-400 mt-3 text-center leading-relaxed">
+        將使用 <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">cptable.utils.encode(936)</code><br>並傳送 FS & 啟用漢字模式
+      </p>
+    </section>
 
-      <!-- Quick test controls -->
-      <div class="pt-2 border-t border-slate-700/50 flex flex-wrap gap-2 text-xs">
-        <button onclick="sendHexCommand('1B401C26')" class="px-2.5 py-1.5 bg-slate-900 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-300">
-          初始化 + FS & (漢字模式)
-        </button>
-        <button onclick="sendHexCommand('1B420202')" class="px-2.5 py-1.5 bg-slate-900 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-300">
-          蜂鳴兩聲
-        </button>
+    <!-- Logs -->
+    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col gap-2 h-48">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-700/50">
+        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 系統日誌
+        </span>
+        <button onclick="clearLogs()" class="text-[11px] text-slate-400 hover:text-white transition-colors">清除</button>
+      </div>
+      <div id="logConsole" class="flex-1 overflow-y-auto text-[11px] font-mono space-y-1 pr-1">
+        <!-- Logs injected here -->
       </div>
     </section>
 
-    <!-- Logs Console -->
-    <section class="bg-slate-800 border border-slate-700/60 rounded-2xl p-4 shadow-lg flex flex-col gap-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">執行狀態紀錄</h2>
-        </div>
-        <button onclick="clearLogs()" class="text-[11px] text-slate-400 hover:text-slate-200">
-          清除
-        </button>
-      </div>
-      
-      <div id="logConsole" class="w-full h-36 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-[11px] font-mono text-emerald-400 overflow-y-auto space-y-1">
-        <!-- Logs appear here dynamically -->
-      </div>
-    </section>
-
-    <footer class="text-center text-[11px] text-slate-500 space-y-1">
-      <p>自檢單確認：XP-Q90EC 預設字庫為 <span class="text-indigo-400 font-mono">Simplified Chinese GB18030</span></p>
-      <p>已切換為雙字節編碼傳輸</p>
-    </footer>
-
-  </div>
-
-  <!-- Notification Toast -->
-  <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700 text-slate-200 px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-200 z-50">
-    <span id="toastIcon">ℹ️</span>
-    <span id="toastMsg">訊息通知</span>
   </div>
 
   <script>
+    // --- Bluetooth State ---
     let bluetoothDevice = null;
     let bluetoothServer = null;
     let printerCharacteristic = null;
 
-    // Common ESC/POS Bluetooth Service & Characteristic UUIDs for XP-Q90EC
+    // Common UUIDs for Thermal Printers
     const SERVICE_UUIDS = [
-      '000018f0-0000-1000-8000-00805f9b34fb', // Standard POS
-      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC Transparent TX/RX
-      'e7810a71-73ae-499d-8c15-faa9aef0c3f2', 
-      '0000e0ff-0000-1000-8000-00805f9b34fb',
-      '0000ff00-0000-1000-8000-00805f9b34fb'
+      '000018f0-0000-1000-8000-00805f9b34fb', // Standard POS Service
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
     ];
+    
+    const CHUNK_SIZE = 100; // MTU safe chunk size
 
-    // Simple Traditional to Simplified dictionary for thermal receipt headers
-    const T2S_MAP = {
-      '現': '现', '在': '在', '的': '的', '時': '时', '間': '间',
-      '項': '项', '目': '目', '日': '日', '期': '期', '星': '星',
-      '期': '期', '一': '一', '二': '二', '三': '三', '四': '四',
-      '五': '五', '六': '六', '日': '日', '戳': '戳', '記': '记',
-      '傳': '传', '輸': '输', '媒': '媒', '介': '介', '藍': '蓝',
-      '牙': '牙', '測': '测', '試': '试', '成': '成', '功': '功',
-      '歡': '欢', '迎': '迎', '光': '光', '臨': '临', '芯': '芯',
-      '燁': '烨', '器': '器', '機': '机', '號': '号', '點': '点',
-      '分': '分', '秒': '秒', '年': '年', '月': '月'
-    };
-
-    function toSimplified(str) {
-      return str.split('').map(ch => T2S_MAP[ch] || ch).join('');
-    }
-
-    // Encoding Function: converts string to GB18030/GBK byte array
-    function encodeToGB18030(str) {
-      const autoSimplify = document.getElementById('chkAutoSimplify').checked;
-      const textToEncode = autoSimplify ? toSimplified(str) : str;
-
-      // Check if fast-gbk library is loaded
-      if (window.gbk && typeof window.gbk.encode === 'function') {
-        try {
-          const gbkArr = window.gbk.encode(textToEncode);
-          return new Uint8Array(gbkArr);
-        } catch (e) {
-          console.warn('fast-gbk failed, falling back to basic ASCII/UTF-8:', e);
-        }
-      }
-
-      // Fallback 1: TextEncoder with standard fallback if library wasn't loaded
-      log('注意：未載入外部 GBK 庫，嘗試直接傳輸', 'warn');
-      return new TextEncoder().encode(textToEncode);
-    }
-
-    // Logging helper
-    function log(message, type = 'info') {
+    // --- Logging Utility ---
+    function log(msg, type = 'info') {
       const consoleEl = document.getElementById('logConsole');
-      const now = new Date();
-      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const time = new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 2 });
       
-      const logLine = document.createElement('div');
-      logLine.className = 'leading-relaxed';
+      const div = document.createElement('div');
+      let colorClass = 'text-slate-300';
+      if (type === 'error') colorClass = 'text-rose-400 font-bold';
+      if (type === 'success') colorClass = 'text-emerald-400';
+      if (type === 'warn') colorClass = 'text-amber-300';
       
-      if (type === 'error') {
-        logLine.className += ' text-rose-400 font-semibold';
-      } else if (type === 'success') {
-        logLine.className += ' text-emerald-300 font-medium';
-      } else if (type === 'warn') {
-        logLine.className += ' text-amber-300';
-      } else {
-        logLine.className += ' text-slate-300';
-      }
-
-      logLine.innerText = `[${timeStr}] ${message}`;
-      consoleEl.appendChild(logLine);
+      div.className = `${colorClass} leading-tight break-all pb-1`;
+      div.innerHTML = `<span class="text-slate-500">[${time}]</span> ${msg}`;
+      
+      consoleEl.appendChild(div);
       consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
@@ -239,317 +145,229 @@
       log('日誌已清除');
     }
 
-    function showToast(msg, icon = 'ℹ️') {
-      const toast = document.getElementById('toast');
-      document.getElementById('toastMsg').innerText = msg;
-      document.getElementById('toastIcon').innerText = icon;
-      toast.classList.remove('opacity-0', 'pointer-events-none');
-      
-      clearTimeout(window._toastTimeout);
-      window._toastTimeout = setTimeout(() => {
-        toast.classList.add('opacity-0', 'pointer-events-none');
-      }, 3000);
-    }
-
-    function updateClock() {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const date = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-
-      const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-      const dayName = days[now.getDay()];
-
-      document.getElementById('liveClock').textContent = `${hours}:${minutes}:${seconds}`;
-      document.getElementById('liveDate').textContent = `${year}/${month}/${date} ${dayName}`;
-    }
-
-    setInterval(updateClock, 1000);
-    updateClock();
-
-    // Check Web Bluetooth support
-    window.addEventListener('DOMContentLoaded', () => {
+    // --- Initialization Check ---
+    window.onload = function() {
       const notice = document.getElementById('btSupportNotice');
       if (navigator.bluetooth) {
-        notice.textContent = 'Web Bluetooth 支援 ✔';
-        notice.classList.remove('text-indigo-400');
-        notice.classList.add('text-emerald-400');
-        log('藍牙介面已就緒');
+        notice.textContent = '✔️ Web Bluetooth API 已就緒 (Bluefy 相容)';
+        notice.className = 'text-[11px] text-emerald-400 text-center font-mono mt-1';
+        log('藍牙環境檢查通過');
       } else {
-        notice.textContent = '無 Web Bluetooth ❌';
-        notice.classList.remove('text-indigo-400');
-        notice.classList.add('text-rose-400');
-        log('請在 iOS 使用 Bluefy Browser 開啟此網頁！', 'error');
-        showToast('請使用 Bluefy 瀏覽器開啟', '⚠️');
+        notice.textContent = '❌ 瀏覽器不支援 Web Bluetooth';
+        notice.className = 'text-[11px] text-rose-400 text-center font-mono mt-1';
+        log('錯誤：請在 iOS 使用 Bluefy Browser 開啟此網頁', 'error');
       }
 
-      if (window.gbk) {
-        log('GB18030 / GBK 中文轉碼庫載入成功 ✔', 'success');
+      if (typeof cptable !== 'undefined') {
+        log('CP936 編碼庫 (cpexcel.js) 載入成功', 'success');
       } else {
-        log('GBK 轉碼庫載入中或離線模式', 'warn');
+        log('警告：CP936 編碼庫尚未載入', 'error');
       }
-    });
+    };
 
+    // --- STREAMING_CHUNK:Bluetooth Connection Logic... ---
     async function connectPrinter() {
       if (!navigator.bluetooth) {
-        showToast('此瀏覽器未啟用 Web Bluetooth', '❌');
-        log('無法連線：navigator.bluetooth 不存在', 'error');
+        alert("請使用支援 Web Bluetooth 的瀏覽器 (如 iOS Bluefy 或 Android Chrome)。");
         return;
       }
 
       try {
-        log('正在開啟藍牙裝置選擇視窗...');
+        log('請求藍牙裝置配對 (請選擇 XP-Q90EC)...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({
           acceptAllDevices: true,
-          optionalServices: [
-            ...SERVICE_UUIDS,
-            'generic_access'
-          ]
+          optionalServices: [...SERVICE_UUIDS, 'generic_access']
         });
 
-        log(`已選取裝置: ${bluetoothDevice.name || 'XP-Q90EC'} (${bluetoothDevice.id})`, 'success');
+        log(`已選擇: ${bluetoothDevice.name || 'Unknown Device'}`, 'success');
         bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
 
-        log('正在連線 GATT...');
+        log('正在連接 GATT 伺服器...');
         bluetoothServer = await bluetoothDevice.gatt.connect();
         
+        log('正在尋找寫入特徵值 (Characteristic)...');
         printerCharacteristic = await findWritableCharacteristic(bluetoothServer);
 
-        if (!printerCharacteristic) {
-          throw new Error('未找到支援寫入的特徵值 (Writable Characteristic)');
+        if (printerCharacteristic) {
+          updateUI(true);
+          log('✅ 印表機連線準備就緒！', 'success');
+        } else {
+          throw new Error('未找到支援寫入的藍牙特徵值');
         }
-
-        updateUIStatus(true, bluetoothDevice.name || 'XP-Q90EC (已連線)');
-        log('印表機連線完成！已配置漢字模式相容輸出。', 'success');
-        showToast('印表機連線成功！', '🎉');
-
       } catch (err) {
         log(`連線失敗: ${err.message}`, 'error');
-        showToast(err.name === 'NotFoundError' ? '已取消配對' : `連線異常: ${err.message}`, '❌');
-        updateUIStatus(false);
+        updateUI(false);
       }
     }
 
     async function findWritableCharacteristic(server) {
-      for (const serviceUuid of SERVICE_UUIDS) {
+      // 1. Try known services
+      for (let uuid of SERVICE_UUIDS) {
         try {
-          const service = await server.getPrimaryService(serviceUuid);
+          const service = await server.getPrimaryService(uuid);
           const chars = await service.getCharacteristics();
-          
-          for (const char of chars) {
-            const props = char.properties;
-            if (props.write || props.writeWithoutResponse) {
-              log(`找到寫入特徵值: ${char.uuid}`, 'success');
+          for (let char of chars) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              log(`找到寫入點 (Service: ${uuid.split('-')[0]})`);
               return char;
             }
           }
-        } catch (e) {}
+        } catch(e) {}
       }
-
+      
+      // 2. Fallback: scan all services
       try {
         const services = await server.getPrimaryServices();
-        for (const service of services) {
-          try {
-            const characteristics = await service.getCharacteristics();
-            for (const char of characteristics) {
-              if (char.properties.write || char.properties.writeWithoutResponse) {
-                return char;
-              }
+        for (let service of services) {
+          const chars = await service.getCharacteristics();
+          for (let char of chars) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              log(`找到寫入點 (Fallback UUID: ${char.uuid})`);
+              return char;
             }
-          } catch (e) {}
+          }
         }
-      } catch (e) {}
-
+      } catch(e) {}
       return null;
     }
 
     function onDisconnected() {
-      log('藍牙裝置已中斷連線', 'warn');
-      showToast('印表機已離線', '⚠️');
-      updateUIStatus(false);
-      printerCharacteristic = null;
+      log('藍牙連線已中斷', 'warn');
+      updateUI(false);
       bluetoothServer = null;
+      printerCharacteristic = null;
     }
 
     function disconnectPrinter() {
       if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-        log('中斷連線中...');
+        log('正在手動中斷連線...');
         bluetoothDevice.gatt.disconnect();
-      } else {
-        updateUIStatus(false);
       }
     }
 
-    function updateUIStatus(isConnected, deviceName = '') {
-      const badge = document.getElementById('connBadge');
-      const devInfo = document.getElementById('deviceInfo');
+    function updateUI(isConnected) {
+      const statusDiv = document.getElementById('connStatus');
       const btnConnect = document.getElementById('btnConnect');
       const btnDisconnect = document.getElementById('btnDisconnect');
 
       if (isConnected) {
-        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span>已連線';
-        devInfo.textContent = `裝置：${deviceName} (GB18030)`;
-        btnConnect.classList.add('opacity-50');
+        statusDiv.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-inner">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 已連線
+          </span>`;
+        btnConnect.classList.add('opacity-50', 'pointer-events-none');
         btnDisconnect.disabled = false;
       } else {
-        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>未連線';
-        devInfo.textContent = '自檢單字庫：GB18030 簡體中文';
-        btnConnect.classList.remove('opacity-50');
+        statusDiv.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> 未連線
+          </span>`;
+        btnConnect.classList.remove('opacity-50', 'pointer-events-none');
         btnDisconnect.disabled = true;
       }
     }
 
-    async function sendRawBytes(bytes) {
+    // --- STREAMING_CHUNK:Printing & Encoding Logic... ---
+
+    // Encode string to CP936 (GBK) Uint8Array using cptable
+    function encodeToCP936(text) {
+      if (typeof cptable === 'undefined') {
+        throw new Error("CP936 編碼庫未載入，無法轉換中文字元");
+      }
+      // cptable.utils.encode returns an Array of bytes or Uint8Array directly
+      const encoded = cptable.utils.encode(936, text);
+      return new Uint8Array(encoded);
+    }
+
+    // Send payload in chunks to avoid GATT MTU limit drops
+    async function sendRawBytes(payloadBytes) {
       if (!printerCharacteristic) {
-        showToast('請先連線至印表機', '⚠️');
-        log('傳送失敗：尚未連線', 'error');
+        alert("請先連線至印表機");
         return false;
       }
 
-      // XP-Q90EC BLE packet safe chunk size
-      const CHUNK_SIZE = 80;
-      const totalBytes = bytes.length;
+      const total = payloadBytes.length;
       let offset = 0;
+      
+      log(`開始傳送資料，總大小: ${total} bytes...`);
 
       try {
-        while (offset < totalBytes) {
-          const slice = bytes.slice(offset, offset + CHUNK_SIZE);
+        while (offset < total) {
+          const chunk = payloadBytes.slice(offset, offset + CHUNK_SIZE);
           
           if (printerCharacteristic.properties.writeWithoutResponse) {
-            await printerCharacteristic.writeValueWithoutResponse(slice);
+            await printerCharacteristic.writeValueWithoutResponse(chunk);
           } else {
-            await printerCharacteristic.writeValue(slice);
+            await printerCharacteristic.writeValue(chunk);
           }
-
+          
           offset += CHUNK_SIZE;
-          if (offset < totalBytes) {
-            await new Promise(r => setTimeout(r, 20)); // Delay prevents buffer drop
-          }
+          // Small delay to let hardware buffer process
+          await new Promise(resolve => setTimeout(resolve, 20)); 
         }
-
-        log(`成功傳送 ${totalBytes} 位元組 (GB18030)`, 'success');
+        log(`✅ 成功傳送 ${total} bytes`, 'success');
         return true;
       } catch (err) {
-        log(`傳送失敗: ${err.message}`, 'error');
-        showToast('傳送失敗: ' + err.message, '❌');
+        log(`❌ 傳送失敗: ${err.message}`, 'error');
         return false;
       }
     }
 
-    async function printCurrentTime() {
+    async function printTestReceipt() {
       if (!printerCharacteristic) {
-        showToast('請先點擊「搜尋並連線」印表機', '⚠️');
+        log('請先點擊「搜尋並連線」', 'warn');
         return;
       }
 
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const date = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-      const dayName = days[now.getDay()];
-
-      log(`準備列印時間: ${hours}:${minutes}:${seconds} (GB18030模式)`);
-
-      const commands = [];
-
-      // 1. ESC @ (0x1B, 0x40) Initialize Printer
-      commands.push(0x1B, 0x40);
-
-      // 2. FS & (0x1C, 0x26) Select Chinese Character Mode (重要！啟用自檢單上的 GB18030 漢字字庫)
-      commands.push(0x1C, 0x26);
-
-      // 3. ESC t 0 (0x1B, 0x74, 0x00) Code Page 0 (PC437 / Standard)
-      commands.push(0x1B, 0x74, 0x00);
-
-      // 4. ESC a 1 (居中對齊)
-      commands.push(0x1B, 0x61, 0x01);
-
-      // 5. GS ! 0x11 (字體倍高倍寬)
-      commands.push(0x1D, 0x21, 0x11);
-      const titleBytes = encodeToGB18030("XP-Q90EC 測試\n");
-      titleBytes.forEach(b => commands.push(b));
-
-      // 6. GS ! 0x00 (恢復一般字體)
-      commands.push(0x1D, 0x21, 0x00);
-      const sepBytes = encodeToGB18030("--------------------------------\n");
-      sepBytes.forEach(b => commands.push(b));
-
-      // 7. ESC a 0 (靠左對齊)
-      commands.push(0x1B, 0x61, 0x00);
-
-      const content = 
-        `項目：現在的時間\n` +
-        `日期：${year}-${month}-${date} (${dayName})\n` +
-        `時間：${hours}:${minutes}:${seconds}\n` +
-        `字庫：Simplified Chinese GB18030\n` +
-        `狀態：測試正常\n` +
-        `--------------------------------\n`;
-
-      const contentBytes = encodeToGB18030(content);
-      contentBytes.forEach(b => commands.push(b));
-
-      // 8. ESC a 1 (居中結尾)
-      commands.push(0x1B, 0x61, 0x01);
-      const footerBytes = encodeToGB18030("列印成功 / 漢字測試\n\n\n\n");
-      footerBytes.forEach(b => commands.push(b));
-
-      // 9. GS V 66 0 (部分切刀)
-      commands.push(0x1D, 0x56, 0x42, 0x00);
-
-      const payload = new Uint8Array(commands);
-      const ok = await sendRawBytes(payload);
-      if (ok) {
-        showToast('列印指令已發送！', '🖨️');
-      }
-    }
-
-    async function printCustomText() {
-      const text = document.getElementById('customTextInput').value.trim();
-      if (!text) {
-        showToast('請輸入要列印的文字', '✏️');
-        return;
-      }
-
-      const commands = [
-        0x1B, 0x40,       // Init
-        0x1C, 0x26,       // FS & (Chinese mode)
-        0x1B, 0x61, 0x00  // Align left
-      ];
-
-      const textBytes = encodeToGB18030(text + "\n\n\n");
-      textBytes.forEach(b => commands.push(b));
-
-      const payload = new Uint8Array(commands);
-      const ok = await sendRawBytes(payload);
-      if (ok) {
-        showToast('自訂文字已送出！', '🖨️');
-      }
-    }
-
-    async function feedAndCutPaper() {
-      // Feed 4 lines (ESC d 4) + Cut (GS V 66 0)
-      const commands = new Uint8Array([0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00]);
-      await sendRawBytes(commands);
-      showToast('走紙與切刀指令已送出', '✂️');
-    }
-
-    async function sendHexCommand(hexString) {
       try {
-        const cleanHex = hexString.replace(/\s+/g, '');
-        const bytes = new Uint8Array(cleanHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-        log(`發送自訂 HEX 指令: 0x${cleanHex.toUpperCase()}`);
-        await sendRawBytes(bytes);
-      } catch (e) {
-        log('HEX 格式解析失敗: ' + e.message, 'error');
+        log('建構 ESC/POS 測試列印指令...');
+        const payload = [];
+
+        // Helper to push bytes to payload
+        const addBytes = (arr) => {
+          for(let i=0; i<arr.length; i++) payload.push(arr[i]);
+        };
+
+        // 1. 初始化印表機 (ESC @)
+        addBytes([0x1B, 0x40]); 
+        
+        // 2. 啟用漢字模式 (FS &) - 關鍵防亂碼指令
+        addBytes([0x1C, 0x26]); 
+        
+        // 3. 置中對齊 (ESC a 1)
+        addBytes([0x1B, 0x61, 0x01]); 
+
+        const headerStr = 
+          "========================\n" +
+          "      咩味時刻工作室     \n" +
+          "    (五寮尖山羊乳)      \n" +
+          "========================\n";
+        
+        addBytes(encodeToCP936(headerStr));
+
+        // 4. 靠左對齊 (ESC a 0)
+        addBytes([0x1B, 0x61, 0x00]);
+
+        const now = new Date();
+        const timeStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+        const bodyStr = 
+          "設備：XP-Q90EC\n" +
+          "編碼：GB18030 (CP936)\n" +
+          `時間：${timeStr}\n` +
+          "狀態：中文亂碼測試成功！\n\n\n\n";
+        
+        addBytes(encodeToCP936(bodyStr));
+
+        // 5. 部分切刀 (GS V 66 0)
+        addBytes([0x1D, 0x56, 0x42, 0x00]);
+
+        // Execute transmission
+        const finalBuffer = new Uint8Array(payload);
+        await sendRawBytes(finalBuffer);
+        
+      } catch (error) {
+        log(`列印錯誤: ${error.message}`, 'error');
       }
     }
   </script>
