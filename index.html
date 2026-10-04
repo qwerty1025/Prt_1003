@@ -3,372 +3,767 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>XP-Q90EC 藍牙列印 (CP936 修復版)</title>
+  <title>外送出貨單系統 - 標籤工作台 v7</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  
-  <!-- CRITICAL: Using cptable for Code Page 936 (GBK) encoding to fix thermal printer mojibake -->
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+  <!-- 核心：載入 CP936 (GBK) 編碼庫以解決熱感應印表機中文亂碼問題 -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/cpexcel.js"></script>
 
   <style>
     body {
       font-family: 'Noto Sans TC', sans-serif;
       -webkit-tap-highlight-color: transparent;
-      background-color: #0f172a; /* Slate 900 */
-      color: #f1f5f9; /* Slate 100 */
+      background-color: #0f172a;
+      color: #f1f5f9;
+      padding-bottom: 80px; 
     }
-    .font-mono {
-      font-family: 'JetBrains Mono', monospace;
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .custom-checkbox:checked + div {
+      background-color: #f59e0b;
+      border-color: #f59e0b;
     }
-    /* Custom scrollbar for logs */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #1e293b; }
-    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    .custom-checkbox:checked + div svg { display: block; }
   </style>
 </head>
-<body class="min-h-screen pb-12 selection:bg-indigo-500 selection:text-white">
-  
-  <div class="max-w-md mx-auto p-4 flex flex-col gap-5">
+<body class="selection:bg-indigo-500 selection:text-white">
+
+  <!-- 頂部狀態列 -->
+  <header class="bg-slate-800/95 backdrop-blur border-b border-slate-700 p-3 sticky top-0 z-50 flex justify-between items-center shadow-md">
+    <div class="flex flex-col">
+      <h1 class="text-base font-bold text-white tracking-wider">出貨標籤工作台</h1>
+      <span class="text-[10px] text-slate-400">目前位於: <span id="currentTabLabel" class="text-amber-400">A. 登記 (便貼)</span> | 編碼: CP936</span>
+    </div>
+    <div id="connStatus" class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+        未連線
+      </span>
+    </div>
+  </header>
+
+  <main class="p-4">
     
-    <!-- Header Card -->
-    <header class="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-2xl p-4 shadow-xl">
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-            </svg>
+    <!-- ==================== 分頁 A: 業務登記 (A-1 商品便貼) ==================== -->
+    <section id="tab-A" class="space-y-5 block animate-fade-in">
+      <div class="bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-700">
+        <h2 class="text-sm font-semibold text-amber-400 mb-3 border-b border-slate-700 pb-2 flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+          A-1 預購便貼登記
+        </h2>
+
+        <!-- 橫向導航取貨點 -->
+        <div class="mb-4">
+          <label class="block text-xs text-slate-400 mb-2">取貨站點 (橫滑選擇)</label>
+          <div class="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
+            <label class="cursor-pointer shrink-0">
+              <input type="radio" name="loc" value="土農-本會直銷站" class="peer sr-only" checked>
+              <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 peer-checked:bg-amber-600 peer-checked:border-amber-500 peer-checked:text-white text-slate-400 text-sm font-bold transition-colors">本會直銷站</div>
+            </label>
+            <label class="cursor-pointer shrink-0">
+              <input type="radio" name="loc" value="土農-清水" class="peer sr-only">
+              <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 peer-checked:bg-amber-600 peer-checked:border-amber-500 peer-checked:text-white text-slate-400 text-sm font-bold transition-colors">清水</div>
+            </label>
+            <label class="cursor-pointer shrink-0">
+              <input type="radio" name="loc" value="土農-金城路小舖" class="peer sr-only">
+              <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 peer-checked:bg-amber-600 peer-checked:border-amber-500 peer-checked:text-white text-slate-400 text-sm font-bold transition-colors">金城路小舖</div>
+            </label>
+            <label class="cursor-pointer shrink-0">
+              <input type="radio" name="loc" value="土農-永豐" class="peer sr-only">
+              <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 peer-checked:bg-amber-600 peer-checked:border-amber-500 peer-checked:text-white text-slate-400 text-sm font-bold transition-colors">永豐</div>
+            </label>
+            <label class="cursor-pointer shrink-0">
+              <input type="radio" name="loc" value="其他" class="peer sr-only">
+              <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 peer-checked:bg-amber-600 peer-checked:border-amber-500 peer-checked:text-white text-slate-400 text-sm font-bold transition-colors">其他</div>
+            </label>
+          </div>
+        </div>
+
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">客戶姓名</label>
+            <input type="text" id="manualName" placeholder="例如: 王大明" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-500 text-sm">
           </div>
           <div>
-            <h1 class="text-lg font-bold tracking-tight text-white">XP-Q90EC 測試器</h1>
-            <p class="text-[11px] text-emerald-400 font-mono">編碼引擎: CP936 (GB18030)</p>
+            <label class="block text-xs text-slate-400 mb-1">記事本預購備註 (將列印於便貼第4行)</label>
+            <input type="text" id="manualNote" placeholder="例如: 預留款 / 下午取" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-500 text-sm">
           </div>
         </div>
-        <div id="connStatus" class="flex flex-col items-end">
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
-            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-            未連線
-          </span>
+
+        <div class="grid grid-cols-2 gap-4 mb-5">
+          <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col items-center">
+            <span class="text-xs text-slate-400 mb-2">大瓶數量</span>
+            <div class="flex items-center gap-3">
+              <button onclick="changeQty('large', -1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">-</button>
+              <span id="qtyLarge" class="text-xl font-bold text-white w-6 text-center">0</span>
+              <button onclick="changeQty('large', 1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">+</button>
+            </div>
+          </div>
+          <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col items-center">
+            <span class="text-xs text-slate-400 mb-2">中瓶數量</span>
+            <div class="flex items-center gap-3">
+              <button onclick="changeQty('medium', -1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">-</button>
+              <span id="qtyMedium" class="text-xl font-bold text-white w-6 text-center">0</span>
+              <button onclick="changeQty('medium', 1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">+</button>
+            </div>
+          </div>
+        </div>
+
+        <button onclick="addManualOrder()" class="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-xl text-white font-bold shadow-lg shadow-amber-600/30 active:scale-95 transition-all text-sm flex justify-center items-center gap-2">
+          + 加入列印佇列
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== 分頁 B: 列表與站點出貨單 ==================== -->
+    <section id="tab-B" class="space-y-4 hidden animate-fade-in">
+      
+      <!-- B 區次選單切換 -->
+      <div class="flex bg-slate-800 rounded-xl p-1 gap-1 shadow-lg border border-slate-700">
+        <button onclick="switchSubTabB('B1')" id="btnSubB1" class="flex-1 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white transition-all">B-1 客戶明細 (便貼)</button>
+        <button onclick="switchSubTabB('B2')" id="btnSubB2" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all">B-2 站點總計 (出貨單)</button>
+      </div>
+
+      <!-- B-1 視角: 客戶明細 (原功能) -->
+      <div id="view-B1" class="space-y-4 block">
+        <div class="bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-700">
+          <h2 class="text-sm font-semibold text-slate-300 mb-2 flex justify-between items-center">
+            <span>雲端批次匯入 (GOTx)</span>
+          </h2>
+          <div class="flex gap-2">
+            <input type="text" id="sheetUrl" value="https://docs.google.com/spreadsheets/d/1GwHutB8D7KeuN5QuehL8Dt_Ed3G6rYzOzBIGCeWG8pc/edit?usp=sharing" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-slate-400 text-[10px] outline-none" readonly>
+            <button onclick="fetchGoogleSheet()" class="px-4 bg-emerald-600 rounded-lg text-white font-bold text-xs active:scale-95 transition-all whitespace-nowrap">連線匯入</button>
+          </div>
+        </div>
+
+        <div class="bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-700">
+          <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+            <h2 class="text-sm font-semibold text-white">待列印便貼 <span id="queueCount" class="text-amber-400">(0)</span></h2>
+            <button onclick="clearQueue()" class="text-xs text-rose-400 py-1 px-2 bg-rose-500/10 rounded">清空全部</button>
+          </div>
+          <div id="queueListGrouped" class="space-y-4">
+            <div class="text-center text-slate-500 text-xs py-8">請先從 A 登記或匯入資料</div>
+          </div>
         </div>
       </div>
-    </header>
 
-    <!-- Connection Controls -->
-    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
-      <h2 class="text-sm font-semibold text-slate-300">藍牙裝置控制</h2>
-      <div class="grid grid-cols-2 gap-3">
-        <button id="btnConnect" onclick="connectPrinter()" class="w-full py-3 px-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all rounded-xl font-medium text-sm text-white shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-          搜尋並連線
-        </button>
-        <button id="btnDisconnect" onclick="disconnectPrinter()" disabled class="w-full py-3 px-2 bg-slate-700/80 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all rounded-xl font-medium text-sm text-slate-300 flex items-center justify-center gap-1">
-          中斷連線
-        </button>
+      <!-- B-2 視角: 站點出貨總計 -->
+      <div id="view-B2" class="space-y-4 hidden">
+        <div class="bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-700">
+          <div class="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
+            <h2 class="text-sm font-semibold text-emerald-400 flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17zm-4 4h14a2 2 0 002-2V7l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+              A-2 送貨出貨單 (站點匯總)
+            </h2>
+            <button onclick="refreshB2Summary()" class="text-xs bg-slate-700 text-white py-1 px-3 rounded-lg flex items-center gap-1 active:scale-95">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>重整計算
+            </button>
+          </div>
+
+          <!-- 站點選擇導航 -->
+          <div class="mb-4">
+            <div class="flex overflow-x-auto gap-2 pb-2 hide-scrollbar" id="b2LocNav">
+              <!-- 動態生成 -->
+            </div>
+          </div>
+
+          <!-- 匯總面板 -->
+          <div class="bg-slate-900 border border-slate-700 rounded-xl p-4">
+            <div class="text-center mb-4">
+              <h3 class="text-lg font-black text-white tracking-widest">五寮尖山羊乳出貨單</h3>
+              <p class="text-xs text-slate-400 mt-1">地點：<span id="b2DisplayLoc" class="text-emerald-400 font-bold">尚未選擇</span></p>
+              <p class="text-xs text-slate-400">日期：<span id="b2DisplayDate" class="text-amber-400"></span></p>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4 mb-4">
+              <p class="text-sm font-bold text-white mb-3">出貨內容的數量：</p>
+              
+              <div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg mb-2 border border-slate-700">
+                <span class="text-sm font-bold text-slate-300">大瓶</span>
+                <div class="flex items-center gap-4">
+                  <button onclick="adjustB2Qty('large', -1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">-</button>
+                  <span id="b2QtyLarge" class="text-xl font-black text-emerald-400 w-8 text-center">0</span>
+                  <button onclick="adjustB2Qty('large', 1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">+</button>
+                </div>
+              </div>
+              
+              <div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg border border-slate-700">
+                <span class="text-sm font-bold text-slate-300">中瓶</span>
+                <div class="flex items-center gap-4">
+                  <button onclick="adjustB2Qty('medium', -1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">-</button>
+                  <span id="b2QtyMedium" class="text-xl font-black text-emerald-400 w-8 text-center">0</span>
+                  <button onclick="adjustB2Qty('medium', 1)" class="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center active:bg-slate-600">+</button>
+                </div>
+              </div>
+            </div>
+
+            <button onclick="printA2DeliveryOrder()" class="w-full py-4 bg-emerald-600 rounded-xl text-white font-bold text-sm shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+              🖨️ 列印此站點出貨單
+            </button>
+          </div>
+        </div>
       </div>
-      <p id="btSupportNotice" class="text-[11px] text-slate-400 text-center font-mono mt-1">環境檢查中...</p>
     </section>
 
-    <!-- Test Print Action -->
-    <section class="bg-gradient-to-br from-slate-800 to-indigo-900/30 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col items-center">
-      <div class="mb-4 text-center">
-        <p class="text-xs text-indigo-300 font-semibold tracking-wider mb-1">準備列印</p>
-        <h3 class="text-xl font-bold text-white">咩味時刻工作室</h3>
-        <p class="text-sm text-slate-400">(五寮尖山羊乳)</p>
+    <!-- ==================== 分頁 C: 列印設定與預覽 (A-1 專用) ==================== -->
+    <section id="tab-C" class="space-y-4 hidden animate-fade-in">
+      <div class="bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-700">
+        <h2 class="text-sm font-semibold text-slate-300 mb-3 border-b border-slate-700 pb-2">C-1. A-1 便貼字號與排版設定</h2>
+        <div class="space-y-3 text-xs">
+          <!-- Line 1 -->
+          <div class="flex justify-between items-center bg-slate-900 p-2.5 rounded-lg border border-slate-700">
+            <div class="flex flex-col">
+              <span class="text-slate-300">第一行: 地點+日期</span>
+              <label class="flex items-center gap-1 mt-1 cursor-pointer">
+                <input type="checkbox" id="boldLine1" onchange="renderPreview()" class="accent-amber-500 h-3 w-3"> <span class="text-[10px] text-amber-400">啟用加粗</span>
+              </label>
+            </div>
+            <select id="sizeLine1" onchange="renderPreview()" class="bg-slate-700 text-white rounded px-2 py-1 outline-none font-bold">
+              <option value="1" selected>等級 1 (標準)</option>
+              <option value="2">等級 2</option>
+              <option value="3">等級 3</option>
+              <option value="4">等級 4</option>
+            </select>
+          </div>
+          <!-- Line 2 -->
+          <div class="flex justify-between items-center bg-slate-900 p-2.5 rounded-lg border border-slate-700">
+            <div class="flex flex-col">
+              <span class="text-slate-300">第二行: 姓名</span>
+              <label class="flex items-center gap-1 mt-1 cursor-pointer">
+                <input type="checkbox" id="boldLine2" onchange="renderPreview()" checked class="accent-amber-500 h-3 w-3"> <span class="text-[10px] text-amber-400">啟用加粗</span>
+              </label>
+            </div>
+            <select id="sizeLine2" onchange="renderPreview()" class="bg-slate-700 text-white rounded px-2 py-1 outline-none font-bold">
+              <option value="2">等級 2</option>
+              <option value="3" selected>等級 3</option>
+              <option value="4">等級 4</option>
+              <option value="5">等級 5</option>
+            </select>
+          </div>
+          <!-- Line 3 -->
+          <div class="flex justify-between items-center bg-slate-900 p-2.5 rounded-lg border border-slate-700">
+            <div class="flex flex-col">
+              <span class="text-slate-300">第三行: 配送內容</span>
+              <label class="flex items-center gap-1 mt-1 cursor-pointer">
+                <input type="checkbox" id="boldLine3" onchange="renderPreview()" checked class="accent-amber-500 h-3 w-3"> <span class="text-[10px] text-amber-400">啟用加粗</span>
+              </label>
+            </div>
+            <select id="sizeLine3" onchange="renderPreview()" class="bg-slate-700 text-white rounded px-2 py-1 outline-none font-bold">
+              <option value="2">等級 2</option>
+              <option value="3" selected>等級 3</option>
+              <option value="4">等級 4</option>
+              <option value="5">等級 5</option>
+            </select>
+          </div>
+          
+          <div class="mt-4 p-3 bg-indigo-900/30 border border-indigo-500/30 rounded-lg">
+            <h3 class="text-indigo-300 font-bold mb-2">字體渲染引擎</h3>
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="radio" name="fontEngine" value="native" class="text-indigo-500 focus:ring-indigo-500" checked>
+              <span class="text-slate-200">原生內建字體 (CP936 高速不亂碼模式)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="fontEngine" value="heiti" class="text-indigo-500 focus:ring-indigo-500">
+              <span class="text-slate-200">導入黑體轉譯 (Canvas 排版圖形模式)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 預覽區 -->
+      <div class="bg-white rounded-xl p-4 shadow-lg border border-slate-300 flex flex-col items-center">
+        <h2 class="text-xs font-bold text-slate-400 mb-4 uppercase w-full text-center border-b pb-1">便貼列印預覽 (對應勾選的第一筆)</h2>
+        <div id="printPreviewArea" class="text-black text-center w-full flex flex-col items-center gap-2 font-['Noto_Sans_TC']">
+          <div id="pvL1" style="font-size: 16px;">尚無選擇資料</div>
+          <div id="pvL2" style="font-size: 32px; font-weight: 900;">-</div>
+          <div id="pvL3" style="font-size: 32px; font-weight: 900;">-</div>
+          <div id="pvL4" style="font-size: 14px; border:1px solid #000; padding:2px 8px; border-radius: 4px; display:none;"></div>
+        </div>
       </div>
       
-      <button onclick="printTestReceipt()" class="w-full py-4 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-base shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-        </svg>
-        列印防亂碼測試單
+      <canvas id="renderCanvas" width="384" height="600" class="hidden"></canvas>
+
+      <button onclick="printSelectedA1Queue()" class="w-full py-4 bg-amber-600 rounded-xl text-white font-bold text-lg shadow-lg shadow-amber-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+        批次列印勾選便貼 (<span id="btnQueueCount">0</span>)
       </button>
-      
-      <p class="text-[10px] text-slate-400 mt-3 text-center leading-relaxed">
-        將使用 <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">cptable.utils.encode(936)</code><br>並傳送 FS & 啟用漢字模式
-      </p>
     </section>
 
-    <!-- Logs -->
-    <section class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col gap-2 h-48">
-      <div class="flex items-center justify-between pb-2 border-b border-slate-700/50">
-        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 系統日誌
-        </span>
-        <button onclick="clearLogs()" class="text-[11px] text-slate-400 hover:text-white transition-colors">清除</button>
+    <!-- ==================== 分頁 D: 藍牙與狀態 ==================== -->
+    <section id="tab-D" class="space-y-4 hidden animate-fade-in">
+      <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
+        <h2 class="text-sm font-semibold text-slate-300">D. 藍牙連線與機台狀態</h2>
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <button onclick="connectPrinter('Printer001')" class="w-full py-4 bg-indigo-600 rounded-xl text-xs font-bold text-white shadow-md shadow-indigo-600/25 active:scale-95 flex flex-col items-center justify-center gap-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>自動連接機台
+          </button>
+          <button onclick="connectPrinter('Manual')" class="w-full py-4 bg-sky-600 rounded-xl text-xs font-bold text-white shadow-md shadow-sky-600/25 active:scale-95 flex flex-col items-center justify-center gap-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>手動搜尋藍牙
+          </button>
+        </div>
+        <button onclick="disconnectPrinter()" class="w-full py-2 bg-slate-700/50 border border-slate-600 rounded-xl text-xs text-rose-300 mt-2">中斷連線</button>
       </div>
-      <div id="logConsole" class="flex-1 overflow-y-auto text-[11px] font-mono space-y-1 pr-1">
-        <!-- Logs injected here -->
+
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-lg flex flex-col h-56">
+        <h2 class="text-xs font-semibold text-slate-300 mb-2 border-b border-slate-700 pb-2">系統日誌 Console</h2>
+        <div id="logConsole" class="flex-1 overflow-y-auto text-[10px] font-mono space-y-1 text-slate-400"></div>
       </div>
     </section>
+  </main>
 
-  </div>
+  <!-- 底部導航欄 -->
+  <nav class="fixed bottom-0 w-full bg-slate-800/95 backdrop-blur border-t border-slate-700 pb-safe pt-2 px-1 flex justify-around items-center z-50 h-[70px]">
+    <button onclick="switchTab('A', 'A. 登記 (便貼)')" id="btnTabA" class="flex flex-col items-center p-2 text-amber-500 w-1/4">
+      <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+      <span class="text-[11px] font-bold">登記</span>
+    </button>
+    <button onclick="switchTab('B', 'B. 列表與出貨單')" id="btnTabB" class="flex flex-col items-center p-2 text-slate-400 w-1/4">
+      <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+      <span class="text-[11px] font-bold">列表</span>
+    </button>
+    <button onclick="switchTab('C', 'C. 列印設定')" id="btnTabC" class="flex flex-col items-center p-2 text-slate-400 w-1/4 relative">
+      <div id="printBadge" class="absolute top-1 right-2 w-4 h-4 bg-rose-500 rounded-full text-white text-[9px] flex items-center justify-center font-bold hidden">0</div>
+      <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+      <span class="text-[11px] font-bold">預覽</span>
+    </button>
+    <button onclick="switchTab('D', 'D. 連線')" id="btnTabD" class="flex flex-col items-center p-2 text-slate-400 w-1/4">
+      <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7a4 4 0 108 0 4 4 0 00-8 0zM8 17a4 4 0 108 0 4 4 0 00-8 0z"></path></svg>
+      <span class="text-[11px] font-bold">連線</span>
+    </button>
+  </nav>
 
   <script>
-    // --- Bluetooth State ---
+    let orderQueue = [];
+    
+    // --- 站點預設列表 ---
+    const defaultLocs = ['土農-本會直銷站', '土農-清水', '土農-金城路小舖', '土農-永豐', '其他'];
+    let b2ManualAdjust = {}; // { 'loc': {l: 0, m: 0} }
+    let b2CurrentLoc = '';
+
+    function switchTab(tabId, label) {
+      ['A', 'B', 'C', 'D'].forEach(id => {
+        document.getElementById(`tab-${id}`).classList.add('hidden');
+        document.getElementById(`btnTab${id}`).classList.replace('text-amber-500', 'text-slate-400');
+      });
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      document.getElementById(`btnTab${tabId}`).classList.replace('text-slate-400', 'text-amber-500');
+      document.getElementById('currentTabLabel').innerText = label;
+      
+      if(tabId === 'B') { renderQueue(); buildB2Nav(); refreshB2Summary(); }
+      if(tabId === 'C') { renderQueue(); renderPreview(); }
+    }
+
+    function switchSubTabB(sub) {
+      document.getElementById('view-B1').classList.add('hidden');
+      document.getElementById('view-B2').classList.add('hidden');
+      document.getElementById(`view-${sub}`).classList.remove('hidden');
+      
+      document.getElementById('btnSubB1').className = 'flex-1 py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+      document.getElementById('btnSubB2').className = 'flex-1 py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+      
+      if(sub === 'B1') {
+        document.getElementById('btnSubB1').classList.add('bg-indigo-600', 'text-white');
+        document.getElementById('btnSubB1').classList.remove('text-slate-400');
+      } else {
+        document.getElementById('btnSubB2').classList.add('bg-emerald-600', 'text-white');
+        document.getElementById('btnSubB2').classList.remove('text-slate-400');
+        buildB2Nav(); refreshB2Summary();
+      }
+    }
+
+    function changeQty(type, amt) {
+      const el = document.getElementById(type === 'large' ? 'qtyLarge' : 'qtyMedium');
+      let val = parseInt(el.innerText) + amt;
+      if (val < 0) val = 0;
+      el.innerText = val;
+    }
+
+    function addManualOrder() {
+      const locRadio = document.querySelector('input[name="loc"]:checked');
+      const loc = locRadio ? locRadio.value : "其他";
+      const name = document.getElementById('manualName').value || '未提供';
+      const note = document.getElementById('manualNote').value || '';
+      const lQty = parseInt(document.getElementById('qtyLarge').innerText);
+      const mQty = parseInt(document.getElementById('qtyMedium').innerText);
+
+      if (lQty === 0 && mQty === 0) return alert('請輸入至少一瓶數量');
+      
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+      orderQueue.push({ id: Date.now().toString(), loc, date: dateStr, name, lQty, mQty, note, type: 'A-1', selected: true });
+      log(`加入預購便貼: ${name} (${loc})`);
+      
+      document.getElementById('manualName').value = '';
+      document.getElementById('manualNote').value = '';
+      document.getElementById('qtyLarge').innerText = '0';
+      document.getElementById('qtyMedium').innerText = '0';
+      updateSelectedCount();
+      alert('已加入列表！可至 B 列表確認。');
+    }
+
+    function renderQueue() {
+      const listEl = document.getElementById('queueListGrouped');
+      if (orderQueue.length === 0) {
+        listEl.innerHTML = '<div class="text-center text-slate-500 text-xs py-8">目前無待列印資料</div>';
+        updateSelectedCount(); return;
+      }
+
+      const grouped = orderQueue.reduce((acc, order) => {
+        if (!acc[order.loc]) acc[order.loc] = [];
+        acc[order.loc].push(order); return acc;
+      }, {});
+
+      let html = '';
+      for (const [loc, orders] of Object.entries(grouped)) {
+        const groupSelectedCount = orders.filter(o => o.selected).length;
+        const allSelected = groupSelectedCount === orders.length;
+        
+        html += `
+          <div class="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden mb-4">
+            <div class="bg-slate-700 px-3 py-2 flex justify-between items-center">
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-bold text-white">${loc}</h3>
+                <span class="bg-slate-800 text-amber-400 text-[10px] px-2 py-0.5 rounded-full">${orders.length} 筆</span>
+              </div>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" onchange="toggleGroup('${loc}', this.checked)" ${allSelected ? 'checked' : ''} class="w-4 h-4 text-emerald-500 rounded bg-slate-800 border-slate-600 focus:ring-emerald-500">
+                <span class="text-xs text-slate-300">全選此區</span>
+              </label>
+            </div><div class="p-2 space-y-2">`;
+
+        orders.forEach(order => {
+          const qtyStr = [order.lQty > 0 ? `${order.lQty} 大瓶` : '', order.mQty > 0 ? `${order.mQty} 中瓶` : ''].filter(Boolean).join(' , ');
+          const noteHtml = order.note ? `<div class="text-[11px] text-amber-400 mt-1 border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded inline-block">【 ${order.note} 】</div>` : '';
+
+          html += `
+            <label class="flex items-start gap-3 p-2 bg-slate-800/50 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-700/50 transition-colors relative">
+              <div class="pt-1">
+                <input type="checkbox" onchange="toggleOrder('${order.id}', this.checked)" ${order.selected ? 'checked' : ''} class="custom-checkbox sr-only">
+                <div class="w-5 h-5 rounded border-2 border-slate-500 flex items-center justify-center bg-slate-800 transition-colors">
+                  <svg class="w-3.5 h-3.5 text-white hidden pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+              </div>
+              <div class="flex-1">
+                <div class="text-[10px] text-slate-400 mb-0.5">${order.date}</div>
+                <div class="text-base text-white font-bold tracking-wide">${order.name}</div>
+                <div class="text-lg text-emerald-400 font-bold">${qtyStr}</div>
+                ${noteHtml}
+              </div>
+              <button type="button" onclick="event.preventDefault(); removeOrder('${order.id}')" class="absolute top-2 right-2 text-rose-500 bg-rose-500/10 p-1.5 rounded text-xs">刪除</button>
+            </label>`;
+        });
+        html += `</div></div>`;
+      }
+      listEl.innerHTML = html;
+      updateSelectedCount();
+    }
+
+    function toggleGroup(loc, isChecked) { orderQueue.forEach(o => { if (o.loc === loc) o.selected = isChecked; }); renderQueue(); }
+    function toggleOrder(id, isChecked) { const order = orderQueue.find(o => o.id === id); if(order) order.selected = isChecked; updateSelectedCount(); }
+    function removeOrder(id) { orderQueue = orderQueue.filter(o => o.id !== id); renderQueue(); }
+    function clearQueue() { if(confirm('確定清空全部列表？')) { orderQueue = []; renderQueue(); } }
+    function updateSelectedCount() {
+      const selected = orderQueue.filter(o => o.selected).length;
+      document.getElementById('queueCount').innerText = `(已選 ${selected}/${orderQueue.length})`;
+      document.getElementById('btnQueueCount').innerText = selected;
+      const badge = document.getElementById('printBadge');
+      if(selected > 0) { badge.innerText = selected; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+    }
+
+    async function fetchGoogleSheet() {
+      const url = document.getElementById('sheetUrl').value;
+      const sheetIdMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (!sheetIdMatch) return alert('無效的 Google Sheet 網址');
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetIdMatch[1]}/gviz/tq?tqx=out:csv&sheet=GOTx`;
+
+      log('連接 Google Sheets 中...');
+      try {
+        const res = await fetch(gvizUrl);
+        if (!res.ok) throw new Error('讀取失敗，請確認權限設定');
+        const csv = await res.text();
+        const rows = csv.split('\n').map(row => row.split(',').map(cell => cell.replace(/(^"|"$)/g, '').trim()));
+
+        let count = 0;
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (r.length < 5 || !r[2]) continue;
+          orderQueue.push({
+            id: Date.now().toString() + i,
+            loc: r[0] || '未定', date: r[1] || '', name: r[2],
+            lQty: parseInt(r[3]) || 0, mQty: parseInt(r[4]) || 0, note: r[5] || '',
+            type: 'A-1', selected: true
+          });
+          count++;
+        }
+        log(`成功匯入 ${count} 筆預購便貼`, 'success');
+        renderQueue(); alert(`匯入完成: ${count} 筆`);
+      } catch(e) { log(`匯入錯誤: ${e.message}`, 'error'); alert('匯入失敗'); }
+    }
+
+    // --- B-2 站點總計邏輯 ---
+    function buildB2Nav() {
+      // 合併預設與現有佇列中的地點
+      let activeLocs = [...new Set([...defaultLocs, ...orderQueue.map(o => o.loc)])];
+      const navEl = document.getElementById('b2LocNav');
+      navEl.innerHTML = '';
+      
+      if (!b2CurrentLoc && activeLocs.length > 0) b2CurrentLoc = activeLocs[0];
+
+      activeLocs.forEach(loc => {
+        if(!b2ManualAdjust[loc]) b2ManualAdjust[loc] = {l:0, m:0};
+        const isSelected = loc === b2CurrentLoc;
+        const colorClass = isSelected ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400';
+        
+        navEl.innerHTML += `
+          <div onclick="selectB2Loc('${loc}')" class="cursor-pointer shrink-0 px-4 py-2 rounded-xl border font-bold text-sm transition-colors ${colorClass}">
+            ${loc}
+          </div>
+        `;
+      });
+    }
+
+    function selectB2Loc(loc) {
+      b2CurrentLoc = loc;
+      buildB2Nav();
+      refreshB2Summary();
+    }
+
+    function refreshB2Summary() {
+      if(!b2CurrentLoc) return;
+      document.getElementById('b2DisplayLoc').innerText = b2CurrentLoc;
+      
+      const today = new Date();
+      document.getElementById('b2DisplayDate').innerText = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      
+      // 計算該站點在 Queue 中的基準值
+      let baseL = 0, baseM = 0;
+      orderQueue.filter(o => o.loc === b2CurrentLoc).forEach(o => { baseL += o.lQty; baseM += o.mQty; });
+      
+      // 加上手動調整值
+      let adj = b2ManualAdjust[b2CurrentLoc] || {l:0, m:0};
+      let finalL = baseL + adj.l;
+      let finalM = baseM + adj.m;
+      if(finalL < 0) finalL = 0;
+      if(finalM < 0) finalM = 0;
+      
+      document.getElementById('b2QtyLarge').innerText = finalL;
+      document.getElementById('b2QtyMedium').innerText = finalM;
+    }
+
+    function adjustB2Qty(type, amt) {
+      if(!b2CurrentLoc) return;
+      if(!b2ManualAdjust[b2CurrentLoc]) b2ManualAdjust[b2CurrentLoc] = {l:0, m:0};
+      if(type === 'large') b2ManualAdjust[b2CurrentLoc].l += amt;
+      if(type === 'medium') b2ManualAdjust[b2CurrentLoc].m += amt;
+      refreshB2Summary();
+    }
+
+    // --- C 分頁預覽 (抓取第一筆勾選的資料) ---
+    function renderPreview() {
+      const selectedOrders = orderQueue.filter(o => o.selected);
+      const pxMap = {1: 16, 2: 24, 3: 32, 4: 40, 5: 48};
+      
+      const pvL1 = document.getElementById('pvL1');
+      const pvL2 = document.getElementById('pvL2');
+      const pvL3 = document.getElementById('pvL3');
+      const pvL4 = document.getElementById('pvL4');
+
+      if(selectedOrders.length === 0) {
+        pvL1.innerText = "尚無選擇資料"; pvL2.innerText = "-"; pvL3.innerText = "-"; pvL4.style.display = 'none';
+        return;
+      }
+
+      const order = selectedOrders[0]; // 抓第一筆
+      const v1 = document.getElementById('sizeLine1').value, b1 = document.getElementById('boldLine1').checked;
+      pvL1.innerText = `${order.loc} ${order.date}`;
+      pvL1.style.fontSize = `${pxMap[v1]}px`; pvL1.style.fontWeight = b1 ? '900' : '400';
+      
+      const v2 = document.getElementById('sizeLine2').value, b2 = document.getElementById('boldLine2').checked;
+      pvL2.innerText = order.name;
+      pvL2.style.fontSize = `${pxMap[v2]}px`; pvL2.style.fontWeight = b2 ? '900' : '400';
+      
+      const v3 = document.getElementById('sizeLine3').value, b3 = document.getElementById('boldLine3').checked;
+      const qtyStr = [order.lQty > 0 ? `${order.lQty} 大瓶` : '', order.mQty > 0 ? `${order.mQty} 中瓶` : ''].filter(Boolean).join(' , ');
+      pvL3.innerText = qtyStr;
+      pvL3.style.fontSize = `${pxMap[v3]}px`; pvL3.style.fontWeight = b3 ? '900' : '400';
+
+      if(order.note) {
+        pvL4.innerText = `【 ${order.note} 】`;
+        pvL4.style.display = 'block';
+      } else {
+        pvL4.style.display = 'none';
+      }
+    }
+
+    // --- 藍牙通訊 & 列印 ---
     let bluetoothDevice = null;
-    let bluetoothServer = null;
     let printerCharacteristic = null;
 
-    // Common UUIDs for Thermal Printers
-    const SERVICE_UUIDS = [
-      '000018f0-0000-1000-8000-00805f9b34fb', // Standard POS Service
-      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC
-      'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
-    ];
-    
-    const CHUNK_SIZE = 100; // MTU safe chunk size
-
-    // --- Logging Utility ---
-    function log(msg, type = 'info') {
+    function log(msg, type='info') {
       const consoleEl = document.getElementById('logConsole');
-      const time = new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 2 });
-      
-      const div = document.createElement('div');
-      let colorClass = 'text-slate-300';
-      if (type === 'error') colorClass = 'text-rose-400 font-bold';
-      if (type === 'success') colorClass = 'text-emerald-400';
-      if (type === 'warn') colorClass = 'text-amber-300';
-      
-      div.className = `${colorClass} leading-tight break-all pb-1`;
-      div.innerHTML = `<span class="text-slate-500">[${time}]</span> ${msg}`;
-      
-      consoleEl.appendChild(div);
-      consoleEl.scrollTop = consoleEl.scrollHeight;
+      const time = new Date().toLocaleTimeString('en-US', {hour12:false});
+      let color = 'text-slate-400';
+      if(type === 'error') color = 'text-rose-400';
+      if(type === 'success') color = 'text-emerald-400';
+      consoleEl.innerHTML = `<div class="${color}">[${time}] ${msg}</div>` + consoleEl.innerHTML;
     }
 
-    function clearLogs() {
-      document.getElementById('logConsole').innerHTML = '';
-      log('日誌已清除');
-    }
-
-    // --- Initialization Check ---
-    window.onload = function() {
-      const notice = document.getElementById('btSupportNotice');
-      if (navigator.bluetooth) {
-        notice.textContent = '✔️ Web Bluetooth API 已就緒 (Bluefy 相容)';
-        notice.className = 'text-[11px] text-emerald-400 text-center font-mono mt-1';
-        log('藍牙環境檢查通過');
-      } else {
-        notice.textContent = '❌ 瀏覽器不支援 Web Bluetooth';
-        notice.className = 'text-[11px] text-rose-400 text-center font-mono mt-1';
-        log('錯誤：請在 iOS 使用 Bluefy Browser 開啟此網頁', 'error');
-      }
-
-      if (typeof cptable !== 'undefined') {
-        log('CP936 編碼庫 (cpexcel.js) 載入成功', 'success');
-      } else {
-        log('警告：CP936 編碼庫尚未載入', 'error');
-      }
-    };
-
-    // --- STREAMING_CHUNK:Bluetooth Connection Logic... ---
-    async function connectPrinter() {
-      if (!navigator.bluetooth) {
-        alert("請使用支援 Web Bluetooth 的瀏覽器 (如 iOS Bluefy 或 Android Chrome)。");
-        return;
-      }
-
+    async function connectPrinter(mode) {
+      if (!navigator.bluetooth) return alert("iOS 請使用 Bluefy App 開啟此網頁！");
       try {
-        log('請求藍牙裝置配對 (請選擇 XP-Q90EC)...');
-        bluetoothDevice = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [...SERVICE_UUIDS, 'generic_access']
+        let options = { optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'] };
+        if (mode === 'Printer001') options.filters = [{ name: 'Printer001' }];
+        else options.acceptAllDevices = true;
+
+        bluetoothDevice = await navigator.bluetooth.requestDevice(options);
+        log(`選取裝置: ${bluetoothDevice.name}`);
+        bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+          document.getElementById('connStatus').innerHTML = '<span class="px-2 py-1 rounded-full text-[10px] bg-rose-500/20 text-rose-400">未連線</span>';
+          log('連線中斷', 'error');
         });
 
-        log(`已選擇: ${bluetoothDevice.name || 'Unknown Device'}`, 'success');
-        bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-        log('正在連接 GATT 伺服器...');
-        bluetoothServer = await bluetoothDevice.gatt.connect();
-        
-        log('正在尋找寫入特徵值 (Characteristic)...');
-        printerCharacteristic = await findWritableCharacteristic(bluetoothServer);
-
-        if (printerCharacteristic) {
-          updateUI(true);
-          log('✅ 印表機連線準備就緒！', 'success');
-        } else {
-          throw new Error('未找到支援寫入的藍牙特徵值');
-        }
-      } catch (err) {
-        log(`連線失敗: ${err.message}`, 'error');
-        updateUI(false);
-      }
-    }
-
-    async function findWritableCharacteristic(server) {
-      // 1. Try known services
-      for (let uuid of SERVICE_UUIDS) {
-        try {
-          const service = await server.getPrimaryService(uuid);
-          const chars = await service.getCharacteristics();
-          for (let char of chars) {
-            if (char.properties.write || char.properties.writeWithoutResponse) {
-              log(`找到寫入點 (Service: ${uuid.split('-')[0]})`);
-              return char;
-            }
-          }
-        } catch(e) {}
-      }
-      
-      // 2. Fallback: scan all services
-      try {
+        const server = await bluetoothDevice.gatt.connect();
         const services = await server.getPrimaryServices();
         for (let service of services) {
-          const chars = await service.getCharacteristics();
-          for (let char of chars) {
-            if (char.properties.write || char.properties.writeWithoutResponse) {
-              log(`找到寫入點 (Fallback UUID: ${char.uuid})`);
-              return char;
+          try {
+            const chars = await service.getCharacteristics();
+            for (let char of chars) {
+              if (char.properties.write || char.properties.writeWithoutResponse) {
+                printerCharacteristic = char;
+                document.getElementById('connStatus').innerHTML = '<span class="px-2 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-400">已連線</span>';
+                log('✅ 機台通訊準備就緒！', 'success'); return;
+              }
+            }
+          } catch(e) {}
+        }
+      } catch(e) { log(`連線異常: ${e.message}`, 'error'); }
+    }
+    
+    function disconnectPrinter() { if(bluetoothDevice) bluetoothDevice.gatt.disconnect(); }
+    function encodeCP936(text) { if(typeof cptable === 'undefined') return new Uint8Array(); return new Uint8Array(cptable.utils.encode(936, text)); }
+    function getSizeCmd(level) { const n = parseInt(level) - 1; return (n << 4) | n; }
+
+    function buildTextLineCmd(text, sizeLevel, isBold) {
+      let cmd = [];
+      cmd.push(0x1B, 0x45, isBold ? 1 : 0); 
+      cmd.push(0x1D, 0x21, getSizeCmd(sizeLevel));       
+      let bytes = encodeCP936(text);
+      for(let b of bytes) cmd.push(b);
+      cmd.push(0x0A, 0x1B, 0x4A, sizeLevel > 2 ? 40 : 20, 0x1D, 0x21, 0x00); 
+      return cmd;
+    }
+
+    // 發送 Buffer 核心函數
+    async function sendDataToPrinter(payloadArray) {
+      const data = new Uint8Array(payloadArray);
+      let offset = 0;
+      try {
+        while (offset < data.length) {
+          const chunk = data.slice(offset, offset + 50);
+          if (printerCharacteristic.properties.writeWithoutResponse) await printerCharacteristic.writeValueWithoutResponse(chunk);
+          else await printerCharacteristic.writeValue(chunk);
+          offset += 50; await new Promise(r => setTimeout(r, 40));
+        }
+        log('✅ 列印完成！', 'success');
+        return true;
+      } catch(e) { log(`列印失敗: ${e.message}`, 'error'); return false; }
+    }
+
+    // --- 列印 A-1 便貼 ---
+    async function printSelectedA1Queue() {
+      if (!printerCharacteristic) { alert("請先連線印表機"); switchTab('D', 'D. 連線'); return; }
+      const toPrint = orderQueue.filter(o => o.selected);
+      if (toPrint.length === 0) return alert("未勾選任何便貼資料");
+
+      const fontEngine = document.querySelector('input[name="fontEngine"]:checked').value;
+      log(`列印 ${toPrint.length} 張便貼 (${fontEngine === 'native' ? '原生 CP936' : '黑體'}) ...`);
+
+      let payload = [0x1B, 0x40]; 
+      
+      if (fontEngine === 'native') {
+        payload.push(0x1C, 0x26, 0x1B, 0x33, 80); 
+        for (let order of toPrint) {
+          payload.push(0x1B, 0x61, 0x01); 
+          const v1 = document.getElementById('sizeLine1').value, b1 = document.getElementById('boldLine1').checked;
+          const v2 = document.getElementById('sizeLine2').value, b2 = document.getElementById('boldLine2').checked;
+          const v3 = document.getElementById('sizeLine3').value, b3 = document.getElementById('boldLine3').checked;
+          
+          payload.push(...buildTextLineCmd(`${order.loc} ${order.date}`, v1, b1));
+          payload.push(...buildTextLineCmd(order.name, v2, b2));
+          const qtyStr = [order.lQty > 0 ? `${order.lQty} 大瓶` : '', order.mQty > 0 ? `${order.mQty} 中瓶` : ''].filter(Boolean).join(' , ');
+          payload.push(...buildTextLineCmd(qtyStr, v3, b3));
+          if (order.note) payload.push(...buildTextLineCmd(`【 ${order.note} 】`, 1, true));
+          payload.push(0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00); 
+        }
+      } else {
+        // A-1 Canvas
+        const canvas = document.getElementById('renderCanvas');
+        const ctx = canvas.getContext('2d');
+        const pxMap = {1: 24, 2: 36, 3: 48, 4: 60, 5: 72};
+        for (let order of toPrint) {
+          ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#000000'; ctx.textAlign = 'center'; let curY = 40;
+          const v1 = pxMap[document.getElementById('sizeLine1').value], b1 = document.getElementById('boldLine1').checked;
+          const v2 = pxMap[document.getElementById('sizeLine2').value], b2 = document.getElementById('boldLine2').checked;
+          const v3 = pxMap[document.getElementById('sizeLine3').value], b3 = document.getElementById('boldLine3').checked;
+          ctx.font = `${b1?'900':'400'} ${v1}px 'Noto Sans TC'`; ctx.fillText(`${order.loc} ${order.date}`, 192, curY); curY += v1 + 15;
+          ctx.font = `${b2?'900':'400'} ${v2}px 'Noto Sans TC'`; ctx.fillText(order.name, 192, curY); curY += v2 + 15;
+          const qtyStr = [order.lQty>0?`${order.lQty}大瓶`:'', order.mQty>0?`${order.mQty}中瓶`:''].filter(Boolean).join(',');
+          ctx.font = `${b3?'900':'400'} ${v3}px 'Noto Sans TC'`; ctx.fillText(qtyStr, 192, curY); curY += v3 + 15;
+          if (order.note) { ctx.font = `900 24px 'Noto Sans TC'`; ctx.fillText(`【 ${order.note} 】`, 192, curY); curY += 40; }
+          const tempCanvas = document.createElement('canvas'); tempCanvas.width = 384; tempCanvas.height = curY + 10;
+          tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
+          const imgData = tempCanvas.getContext('2d').getImageData(0,0,384,tempCanvas.height).data;
+          payload.push(0x1D, 0x76, 0x30, 0, 48, 0, tempCanvas.height%256, Math.floor(tempCanvas.height/256));
+          for (let y = 0; y < tempCanvas.height; y++) {
+            for (let x = 0; x < 384; x += 8) {
+              let byte = 0;
+              for (let b = 0; b < 8; b++) { if (x+b<384 && imgData[((y*384)+(x+b))*4]<128) byte |= (1<<(7-b)); }
+              payload.push(byte);
             }
           }
+          payload.push(0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00);
         }
-      } catch(e) {}
-      return null;
-    }
+      }
 
-    function onDisconnected() {
-      log('藍牙連線已中斷', 'warn');
-      updateUI(false);
-      bluetoothServer = null;
-      printerCharacteristic = null;
-    }
-
-    function disconnectPrinter() {
-      if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-        log('正在手動中斷連線...');
-        bluetoothDevice.gatt.disconnect();
+      if(await sendDataToPrinter(payload)) {
+        if(confirm('列印成功！是否要將已列印的項目從清單中清除？')) { orderQueue = orderQueue.filter(o => !o.selected); renderQueue(); }
       }
     }
 
-    function updateUI(isConnected) {
-      const statusDiv = document.getElementById('connStatus');
-      const btnConnect = document.getElementById('btnConnect');
-      const btnDisconnect = document.getElementById('btnDisconnect');
+    // --- 列印 B-2 站點出貨單 ---
+    async function printA2DeliveryOrder() {
+      if (!printerCharacteristic) { alert("請先連線印表機"); switchTab('D', 'D. 連線'); return; }
+      if (!b2CurrentLoc) return alert("請先選擇站點");
 
-      if (isConnected) {
-        statusDiv.innerHTML = `
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-inner">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 已連線
-          </span>`;
-        btnConnect.classList.add('opacity-50', 'pointer-events-none');
-        btnDisconnect.disabled = false;
-      } else {
-        statusDiv.innerHTML = `
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
-            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> 未連線
-          </span>`;
-        btnConnect.classList.remove('opacity-50', 'pointer-events-none');
-        btnDisconnect.disabled = true;
-      }
-    }
+      const dateStr = document.getElementById('b2DisplayDate').innerText;
+      const lQty = parseInt(document.getElementById('b2QtyLarge').innerText);
+      const mQty = parseInt(document.getElementById('b2QtyMedium').innerText);
 
-    // --- STREAMING_CHUNK:Printing & Encoding Logic... ---
+      log(`列印 ${b2CurrentLoc} 出貨單 (CP936 原生)...`);
+      let payload = [0x1B, 0x40, 0x1C, 0x26, 0x1B, 0x33, 80]; // Init + 漢字 + 行距80
 
-    // Encode string to CP936 (GBK) Uint8Array using cptable
-    function encodeToCP936(text) {
-      if (typeof cptable === 'undefined') {
-        throw new Error("CP936 編碼庫未載入，無法轉換中文字元");
-      }
-      // cptable.utils.encode returns an Array of bytes or Uint8Array directly
-      const encoded = cptable.utils.encode(936, text);
-      return new Uint8Array(encoded);
-    }
-
-    // Send payload in chunks to avoid GATT MTU limit drops
-    async function sendRawBytes(payloadBytes) {
-      if (!printerCharacteristic) {
-        alert("請先連線至印表機");
-        return false;
-      }
-
-      const total = payloadBytes.length;
-      let offset = 0;
+      payload.push(0x1B, 0x61, 0x01); // 置中
+      payload.push(...buildTextLineCmd("五寮尖山羊乳出貨單", 2, true));
       
-      log(`開始傳送資料，總大小: ${total} bytes...`);
+      payload.push(0x1B, 0x61, 0x00); // 靠左
+      payload.push(...buildTextLineCmd(`出貨地點：${b2CurrentLoc}`, 1, false));
+      payload.push(...buildTextLineCmd(`出貨日期：${dateStr}`, 1, false));
+      payload.push(...buildTextLineCmd("出貨內容的數量：", 1, true));
+      
+      if(lQty > 0) payload.push(...buildTextLineCmd(` ★ 大瓶：${lQty}`, 2, true));
+      if(mQty > 0) payload.push(...buildTextLineCmd(` ★ 中瓶：${mQty}`, 2, true));
+      
+      payload.push(0x0A);
+      payload.push(...buildTextLineCmd("保留經手人，簽名區域：", 1, false));
+      // 6 行空行
+      payload.push(0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A);
+      payload.push(0x1D, 0x56, 0x42, 0x00); // 切紙
 
-      try {
-        while (offset < total) {
-          const chunk = payloadBytes.slice(offset, offset + CHUNK_SIZE);
-          
-          if (printerCharacteristic.properties.writeWithoutResponse) {
-            await printerCharacteristic.writeValueWithoutResponse(chunk);
-          } else {
-            await printerCharacteristic.writeValue(chunk);
-          }
-          
-          offset += CHUNK_SIZE;
-          // Small delay to let hardware buffer process
-          await new Promise(resolve => setTimeout(resolve, 20)); 
-        }
-        log(`✅ 成功傳送 ${total} bytes`, 'success');
-        return true;
-      } catch (err) {
-        log(`❌ 傳送失敗: ${err.message}`, 'error');
-        return false;
-      }
-    }
-
-    async function printTestReceipt() {
-      if (!printerCharacteristic) {
-        log('請先點擊「搜尋並連線」', 'warn');
-        return;
-      }
-
-      try {
-        log('建構 ESC/POS 測試列印指令...');
-        const payload = [];
-
-        // Helper to push bytes to payload
-        const addBytes = (arr) => {
-          for(let i=0; i<arr.length; i++) payload.push(arr[i]);
-        };
-
-        // 1. 初始化印表機 (ESC @)
-        addBytes([0x1B, 0x40]); 
-        
-        // 2. 啟用漢字模式 (FS &) - 關鍵防亂碼指令
-        addBytes([0x1C, 0x26]); 
-        
-        // 3. 置中對齊 (ESC a 1)
-        addBytes([0x1B, 0x61, 0x01]); 
-
-        const headerStr = 
-          "========================\n" +
-          "      咩味時刻工作室     \n" +
-          "    (五寮尖山羊乳)      \n" +
-          "========================\n";
-        
-        addBytes(encodeToCP936(headerStr));
-
-        // 4. 靠左對齊 (ESC a 0)
-        addBytes([0x1B, 0x61, 0x00]);
-
-        const now = new Date();
-        const timeStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-
-        const bodyStr = 
-          "設備：XP-Q90EC\n" +
-          "編碼：GB18030 (CP936)\n" +
-          `時間：${timeStr}\n` +
-          "狀態：中文亂碼測試成功！\n\n\n\n";
-        
-        addBytes(encodeToCP936(bodyStr));
-
-        // 5. 部分切刀 (GS V 66 0)
-        addBytes([0x1D, 0x56, 0x42, 0x00]);
-
-        // Execute transmission
-        const finalBuffer = new Uint8Array(payload);
-        await sendRawBytes(finalBuffer);
-        
-      } catch (error) {
-        log(`列印錯誤: ${error.message}`, 'error');
-      }
+      await sendDataToPrinter(payload);
     }
   </script>
 </body>
